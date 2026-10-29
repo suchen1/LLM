@@ -1,0 +1,58 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.so
+build/
+dist/
+
+# ---- 虚拟环境 ----
+.venv/
+venv/
+env/
+
+# ---- 模型权重（单个 100 MB 就会被 GitHub 拒绝，见 nlp 仓库踩坑第 2 条）----
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.gguf
+models/
+model/
+checkpoints/
+outputs/
+lora_*/
+merged_*/
+
+# ---- HuggingFace / 数据集缓存 ----
+.cache/
+.huggingface/
+~/.cache/huggingface/
+
+# ---- 语料 ----
+# 语料默认不进版本库。小样本（小于 1 MB）确实要入库时用：git add -f 文件名
+*.jsonl
+*.parquet
+*.arrow
+data/raw/
+data/downloads/
+
+# ---- 训练中间产物 ----
+runs/
+wandb/
+logs/
+*.log
+
+# ---- 凭据 ----
+.env
+.env.*
+*.pem
+secrets/
+
+# ---- 编辑器 / 系统 ----
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
