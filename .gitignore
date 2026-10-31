@@ -23,7 +23,9 @@ checkpoints/
 outputs/
 lora_*/
 merged_*/
-
+data/
+finetuned
+runs_sft/
 # ---- HuggingFace / 数据集缓存 ----
 .cache/
 .huggingface/

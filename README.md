@@ -38,7 +38,30 @@
 
 ## 目录结构
 
-按课程推进逐个建立，暂不预设空目录。
+```
+LLM/
+├── 笔记/                 每次学习后的知识点整理与踩坑记录
+│   └── day02_SFT.md      day02：chat template → 数据 → mask → loss → 训练循环
+├── 作业/                 对照课程自己重写的小实现（day01：RMSNorm / SwiGLU / RoPE）
+│   └── day01_任务/
+├── SFT微调/              day02 的完整 SFT 代码
+│   ├── SFT_demo.py
+│   ├── 01_chat_template.ipynb
+│   ├── 02_data_pre.ipynb
+│   ├── model/            本地模型（已 gitignore）
+│   └── data/             ultrachat_200k（已 gitignore）
+├── 项目候选.md           选题清单与判据
+└── 课程进度.md           30 个模块取舍表 + day01–06 逐日拆解
+```
+
+训练产物（`finetuned/`、`runs_sft/`）与模型/数据均不进版本库。
+
+## 学习记录
+
+| 天 | 内容 | 产出 |
+| --- | --- | --- |
+| day01 | LLM 架构：RoPE / GQA / MoE / Qwen3 代码 | [`作业/day01_任务/`](作业/day01_任务/) —— 自己重写了 RMSNorm、SwiGLU、RoPE，并和官方权重对齐 |
+| day02 | SFT 全流程：chat template → padding → answer mask → loss → 训练循环 | [`SFT微调/SFT_demo.py`](SFT微调/SFT_demo.py) · [`笔记/day02_SFT.md`](笔记/day02_SFT.md) |
 
 ## 与本仓库相关的前置经验
 
@@ -48,6 +71,7 @@
 - CrossEntropyLoss 的类别维、view 与 reshape 的区别（Deep Learn 踩坑第 6 条）
 - 训练统计的分子分母必须同一口径（nlp 踩坑第 9、24 条）
 - 模型权重与语料不进 git，单文件 100 MB 是硬墙（nlp 踩坑第 2、20 条）
+- TensorBoard 在中文路径下会崩，`--logdir` 别拼成 `--logdis`（nlp 踩坑第 3、7 条）
 
 ## 参考
 
