@@ -86,7 +86,20 @@ if ($exists) {
         Plan ("conda " + ($createArgs -join " "))
     } else {
         & $condaBin @createArgs
-        if ($LASTEXITCODE -ne 0) { Fail "创建环境失败" }
+        if ($LASTEXITCODE -ne 0) {
+            Warn "创建环境失败，可能是 .condarc 里的镜像地址失效"
+            Warn "绕过镜像配置重试（直接用清华源）"
+            & $condaBin clean -i -y | Out-Null
+            $fallback = @(
+                "create", "-y", "-n", $EnvName, ("python=" + $PythonVer),
+                "--override-channels",
+                "-c", "https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main"
+            )
+            & $condaBin @fallback
+            if ($LASTEXITCODE -ne 0) {
+                Fail "重试仍失败。请手动执行：conda config --remove-key channels"
+            }
+        }
         Good "环境创建完成"
     }
 }
