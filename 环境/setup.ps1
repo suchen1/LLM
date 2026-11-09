@@ -73,6 +73,31 @@ if ($Cpu) {
     }
 }
 
+# ---------- 2.5 检查失效的本地代理 ----------
+Info "检查代理设置"
+foreach ($pname in @('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy')) {
+    $pval = [Environment]::GetEnvironmentVariable($pname)
+    if ([string]::IsNullOrWhiteSpace($pval)) { continue }
+    $pm = [regex]::Match($pval, '(?:127\.0\.0\.1|localhost):(\d+)')
+    if (-not $pm.Success) { continue }
+    $pport = [int]$pm.Groups[1].Value
+    $alive = $false
+    try {
+        $tc = New-Object Net.Sockets.TcpClient
+        $task = $tc.ConnectAsync('127.0.0.1', $pport)
+        $alive = ($task.Wait(1200)) -and ($tc.Connected)
+        $tc.Close()
+    } catch {
+        $alive = $false
+    }
+    if (-not $alive) {
+        Warn ("代理 " + $pval + " 连不上（端口 " + $pport + " 无服务），本次已禁用")
+        [Environment]::SetEnvironmentVariable($pname, $null)
+    } else {
+        Good ("代理可用: " + $pval)
+    }
+}
+
 # ---------- 3. 建环境 ----------
 Info ("conda 环境 " + $EnvName + " (Python " + $PythonVer + ")")
 $envList = & $condaBin env list
