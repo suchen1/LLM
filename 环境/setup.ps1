@@ -32,11 +32,27 @@ function Fail($msg) {
 
 # ---------- 1. 检查 conda ----------
 Info "检查 conda"
+$condaBin = $null
 $condaCmd = Get-Command conda -ErrorAction SilentlyContinue
-if ($null -eq $condaCmd) {
-    Fail "找不到 conda。请先安装 Miniconda，并在 Anaconda Prompt 里运行本脚本。"
+if ($null -ne $condaCmd) {
+    $condaBin = $condaCmd.Source
+} else {
+    $candidates = @(
+        (Join-Path $env:USERPROFILE "miniconda3\Scripts\conda.exe"),
+        (Join-Path $env:USERPROFILE "anaconda3\Scripts\conda.exe"),
+        "C:\ProgramData\miniconda3\Scripts\conda.exe",
+        "C:\ProgramData\anaconda3\Scripts\conda.exe",
+        "D:\miniconda3\Scripts\conda.exe",
+        "D:\Anaconda3\Scripts\conda.exe"
+    )
+    foreach ($c in $candidates) {
+        if (Test-Path -LiteralPath $c) { $condaBin = $c; break }
+    }
 }
-Good ("conda: " + $condaCmd.Source)
+if ($null -eq $condaBin) {
+    Fail "找不到 conda。请先安装 Miniconda，或改用 Anaconda Prompt 运行本脚本。"
+}
+Good ("conda: " + $condaBin)
 
 # ---------- 2. 判断显卡 ----------
 $hasNvidia = $false
@@ -59,7 +75,7 @@ if ($Cpu) {
 
 # ---------- 3. 建环境 ----------
 Info ("conda 环境 " + $EnvName + " (Python " + $PythonVer + ")")
-$envList = conda env list
+$envList = & $condaBin env list
 $exists = $envList -match ("^\s*" + [regex]::Escape($EnvName) + "\s")
 if ($exists) {
     Warn ("环境 " + $EnvName + " 已存在，跳过创建")
@@ -69,7 +85,7 @@ if ($exists) {
     if ($DryRun) {
         Plan ("conda " + ($createArgs -join " "))
     } else {
-        conda @createArgs
+        & $condaBin @createArgs
         if ($LASTEXITCODE -ne 0) { Fail "创建环境失败" }
         Good "环境创建完成"
     }
@@ -90,8 +106,8 @@ if ($DryRun) {
     Plan ("conda " + ($pyBase -join " ") + " -m pip install --upgrade pip")
     Plan ("conda " + ($pyBase -join " ") + " -m pip install torch torchvision --index-url " + $torchIndex)
 } else {
-    conda @pyBase -m pip install --upgrade pip
-    conda @pyBase -m pip install torch torchvision --index-url $torchIndex
+    & $condaBin @pyBase -m pip install --upgrade pip
+    & $condaBin @pyBase -m pip install torch torchvision --index-url $torchIndex
     if ($LASTEXITCODE -ne 0) {
         Fail "PyTorch 安装失败。检查网络，或改用 -Index cu128 / -Index cu126"
     }
@@ -108,7 +124,7 @@ if ($DryRun) {
     Plan ("conda " + ($pyBase -join " ") + " -m pip install -r " + $reqFile)
 } else {
     Info "安装其余依赖"
-    conda @pyBase -m pip install -r $reqFile
+    & $condaBin @pyBase -m pip install -r $reqFile
     if ($LASTEXITCODE -ne 0) { Fail "依赖安装失败" }
     Good "依赖安装完成"
 }
@@ -119,7 +135,7 @@ if ($DryRun) {
     Plan ("conda " + ($pyBase -join " ") + " " + $verifyFile)
 } elseif (Test-Path $verifyFile) {
     Info "验证环境"
-    conda @pyBase $verifyFile
+    & $condaBin @pyBase $verifyFile
     if ($LASTEXITCODE -ne 0) { Fail "验证未通过，见上面输出" }
 } else {
     Warn "未找到 verify_env.py，跳过验证"
