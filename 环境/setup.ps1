@@ -74,10 +74,22 @@ if ($Cpu) {
 }
 
 # ---------- 2.5 检查失效的本地代理 ----------
+# pip 会同时读取环境变量和 Windows 系统代理（注册表），两处都要查。
+# 发现代理连不上就设 NO_PROXY=*，让 pip 彻底绕开代理，否则每步要等 15 秒超时。
 Info "检查代理设置"
+$proxyList = @()
 foreach ($pname in @('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy')) {
     $pval = [Environment]::GetEnvironmentVariable($pname)
-    if ([string]::IsNullOrWhiteSpace($pval)) { continue }
+    if (-not [string]::IsNullOrWhiteSpace($pval)) { $proxyList += $pval }
+}
+$regKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
+$reg = Get-ItemProperty -Path $regKey -ErrorAction SilentlyContinue
+if ($null -ne $reg -and $reg.ProxyEnable -eq 1 -and $reg.ProxyServer) {
+    $proxyList += $reg.ProxyServer
+}
+
+$deadProxy = $false
+foreach ($pval in ($proxyList | Select-Object -Unique)) {
     $pm = [regex]::Match($pval, '(?:127\.0\.0\.1|localhost):(\d+)')
     if (-not $pm.Success) { continue }
     $pport = [int]$pm.Groups[1].Value
@@ -85,17 +97,21 @@ foreach ($pname in @('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_
     try {
         $tc = New-Object Net.Sockets.TcpClient
         $task = $tc.ConnectAsync('127.0.0.1', $pport)
-        $alive = ($task.Wait(1200)) -and ($tc.Connected)
+        $alive = ($task.Wait(900)) -and ($tc.Connected)
         $tc.Close()
     } catch {
         $alive = $false
     }
-    if (-not $alive) {
-        Warn ("代理 " + $pval + " 连不上（端口 " + $pport + " 无服务），本次已禁用")
-        [Environment]::SetEnvironmentVariable($pname, $null)
-    } else {
+    if ($alive) {
         Good ("代理可用: " + $pval)
+    } else {
+        Warn ("代理 " + $pval + " 连不上（端口 " + $pport + " 没服务），已让 pip 绕开")
+        $deadProxy = $true
     }
+}
+if ($deadProxy) {
+    $env:NO_PROXY = '*'
+    $env:no_proxy = '*'
 }
 
 # ---------- 3. 建环境 ----------
