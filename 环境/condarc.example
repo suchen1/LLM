@@ -1,0 +1,22 @@
+# ============================================================
+#  conda 镜像与路径配置示例
+#
+#  用法：复制到 C:\Users\<你的用户名>\.condarc（文件名就是 .condarc，没有后缀）
+#        在第二台电脑上，此文件能让 conda 建环境和装包快十倍以上。
+#
+#  注意：下面 envs_dirs / pkgs_dirs 是原机器的 D 盘路径，
+#        新电脑上要么按实际盘符改，要么整段删掉（默认装到 base 目录下）。
+# ============================================================
+
+channels:
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge/
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free/
+
+show_channel_urls: true
+
+# ---- 原机器的路径，按新电脑实际情况修改或删除 ----
+# envs_dirs:
+#   - 'D:\Anaconda3\envs'
+# pkgs_dirs:
+#   - 'D:\Anaconda3\pkgs'
