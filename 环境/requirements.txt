@@ -1,6 +1,10 @@
 # nlpbase 环境 · 顶层依赖
 # torch / torchvision 由 setup.ps1 单独安装（要按 GPU 架构和驱动版本选 CUDA 版本），不要写进这里
 # 精确复现请用同目录下的 requirements-lock.txt（140 个包全量锁定）
+#
+# 说明：这里只列 20 个顶层包，pip 会自动带出约 60 个依赖。
+#       本机 140 个包里剩下的 80 个，大部分是历史实验（tensorflow、ultralytics、pyinstaller）
+#       和 Jupyter 全家桶，不需要列在这里；下面按需开关。
 
 transformers==4.57.6
 tokenizers==0.22.2
@@ -21,8 +25,22 @@ tqdm==4.70.1
 protobuf==5.29.6
 pillow==12.3.0
 
+# ---- Notebook：SFT微调/ 下的 .ipynb 要用，别漏 ----
+ipykernel==7.3.0
+jupyter_client==8.10.0
+jupyter_core==5.9.1
+
+# ---- 模型与数据集下载（比 HuggingFace 快十倍以上）----
+modelscope==1.40.2
+
 # ---- 可选：词向量投影可视化才需要，约 1.5 GB ----
 # tensorflow==2.19.0
+
+# ---- 可选：可视化/图像实验用，训练不需要 ----
+# seaborn==0.13.2
+# wordcloud==1.9.6
+# opencv-python==5.0.0.93
+# ultralytics==8.4.152
 
 # ---- 可选：课程 day03–day04 会用到，当前环境尚未安装 ----
 # accelerate
