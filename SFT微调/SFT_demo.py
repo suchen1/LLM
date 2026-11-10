@@ -79,23 +79,6 @@ def _parse_conversation_turns(eos_position):
     return user_ends, assistant_ends
 
 def creat_answer_mask(input_ids, tokenizer: PreTrainedTokenizer):
-    """标出"哪些位置参与 loss"，返回与 input_ids 同形状的 0/1 张量。
-
-    :param input_ids: 必须是【已经位移过的】input_idx = old[:, :-1]，
-                      对应的 labels = old[:, 1:]
-    :param tokenizer: 用来取 <|im_end|> 的 id
-
-    ── 先看模板的 token 排布，所有偏移量都从这来 ──
-        ... <|im_end|>  "\n"  <|im_start|>  "assistant"  "\n"  答案内容...  <|im_end|>
-              im_end     +0        +1           +2         +3     +4
-        用户那句完了：user_end 指向 "\n"（= im_end + 1）
-        助手那句完了：assistant_end 指向 <|im_end|> + 1
-
-    ── 关键前提：mask 的下标 p 表示"用位置 p 的 logits 预测位置 p+1 的 token" ──
-        因为 labels 已经右移了一位。
-        所以 mask 天然要比答案本身【早一格】—— 这就是 "+3 看着少跳了一个
-        token、结果却正确" 的全部原因。
-    """
     answer_mask = torch.zeros_like(input_ids)        # 全 0，稍后把答案段置 1
     eos_id = tokenizer.encode("<|im_end|>")[0]       # 对话轮次分隔符的 token id
 
@@ -118,23 +101,14 @@ def creat_answer_mask(input_ids, tokenizer: PreTrainedTokenizer):
             # 被 max_length 截断：最后一轮 user 在，但 assistant 的回答被切断，
             # 没有收尾的 <|im_end|>，因此拿不到 assistant_end，配不上对
             pairs = list(zip(user_ends[:-1], assistant_ends))   # 前面完整的轮次照常配对
-            # 剩下的半截回答没有结束位置，直接标到序列末尾。
-            # 末尾的 pad 不用怕 —— 训练时会再 & 一个 valid_mask 把 pad 去掉。
-            # 这一行必须在循环体内、用 i，否则只会标到最后一行
+
             answer_mask[i, user_ends[-1] + 3:] = 1
 
         else:
-            # 理论上不会出现（assistant 比 user 还多）。真出现就整条跳过，宁可不标也别标错
             pairs = []
 
         # 5. 把每一对完整轮次的答案段置 1
         for u, a in pairs:
-            # u = user 的 <|im_end|> + 1，再 +3 跳过 "\n" "<|im_start|>" "assistant"，
-            #     落点是 assistant 后面那个 "\n"。因为 mask 语义是"预测下一个 token"，
-            #     从这一格开始，监督到的第一格正好是答案的第一个字。
-            # a - 1 = <|im_end|> 自身的位置；切片左闭右开，
-            #     所以最后一格 a-2 监督的正是 <|im_end|> —— 结束符也在训练范围内，
-            #     模型才学得会"什么时候停"。
             answer_mask[i, u + 3 : a - 1] = 1
 
     return answer_mask
