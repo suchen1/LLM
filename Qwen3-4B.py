@@ -236,8 +236,119 @@ class Qwen3ForCausalLM(nn.Module):
         return logits, cache
 
 
+# ==================== 生成：加载官方权重 + 对话 ====================
+import json as _json
+from safetensors import safe_open as _safe_open
+from transformers import AutoTokenizer as _AutoTokenizer
+
+_MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "Qwen3-4B")
+_MODEL = None
+_TOKENIZER = None
+
+
+def _load_model(path=_MODEL_DIR, device="cuda"):
+    """在 device 上直接建模型并灌权重，不经过 CPU（省 8 GB 内存）。"""
+    with open(os.path.join(path, "model.safetensors.index.json"), encoding="utf-8") as f:
+        weight_map = _json.load(f)["weight_map"]
+
+    with torch.device(device):
+        model = Qwen3ForCausalLM(Qwen3Config())
+
+    state = dict(model.state_dict())
+    n = 0
+    for shard in sorted(set(weight_map.values())):
+        with _safe_open(os.path.join(path, shard), framework="pt", device=device) as f:
+            for key in f.keys():
+                # lm_head 和 embed_tokens 共享权重，官方 checkpoint 里没有这个键，
+                # 所以“找不到”是正常的，不是加载失败。
+                if key in state:
+                    with torch.no_grad():
+                        state[key].copy_(f.get_tensor(key))
+                    n += 1
+    model.eval()
+    print("[加载] %d 个张量 -> %s" % (n, device))
+    return model
+
+
+@torch.no_grad()
+def generate(question, max_new_tokens=256, temperature=0.7, top_p=0.8,
+             top_k=20, repetition_penalty=1.05, greedy=False, device=None):
+    """问一句、答一句。第一次调用加载模型（约 7 s），之后复用。"""
+    global _MODEL, _TOKENIZER
+
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    if _MODEL is None:
+        _MODEL = _load_model(device=device)
+        _TOKENIZER = _AutoTokenizer.from_pretrained(_MODEL_DIR)
+
+    messages = [{"role": "user", "content": question}]
+    try:
+        # Qwen3 默认先吐  thinking 思考块，演示时关掉更直观
+        text = _TOKENIZER.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True, enable_thinking=False)
+    except TypeError:
+        text = _TOKENIZER.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+
+    ids = _TOKENIZER(text, return_tensors="pt").input_ids.to(device)
+
+    # current_pos 是模型里的手动状态，不重置的话 RoPE 会接着上次的位置算
+    _MODEL.model.current_pos = 0
+    cache = {}
+    logits, cache = _MODEL(ids, cache=cache)
+
+    eos = {_TOKENIZER.eos_token_id}
+    for tok in ("<|im_end|>", "<|endoftext|>"):
+        tid = _TOKENIZER.convert_tokens_to_ids(tok)
+        if isinstance(tid, int) and tid >= 0:
+            eos.add(tid)
+
+    out = []
+    for _ in range(max_new_tokens):
+        step_logits = logits[:, -1, :].float()
+
+        # 重复惩罚：出现过的 token 降权，避免车轱辘话和多余换行
+        if repetition_penalty != 1.0:
+            for tid in set(out):
+                if step_logits[0, tid] > 0:
+                    step_logits[0, tid] /= repetition_penalty
+                else:
+                    step_logits[0, tid] *= repetition_penalty
+
+        if greedy:
+            nxt = step_logits.argmax(-1, keepdim=True)
+        else:
+            step_logits = step_logits / temperature
+            if top_k:
+                k = min(top_k, step_logits.size(-1))
+                kth = torch.topk(step_logits, k, dim=-1).values[..., -1, None]
+                step_logits = step_logits.masked_fill(step_logits < kth, float("-inf"))
+            probs = F.softmax(step_logits, dim=-1)
+            if 0 < top_p < 1:
+                sorted_p, sorted_i = torch.sort(probs, descending=True, dim=-1)
+                cum = torch.cumsum(sorted_p, dim=-1)
+                sorted_p = sorted_p.masked_fill(cum - sorted_p > top_p, 0.0)
+                sorted_p = sorted_p / sorted_p.sum(dim=-1, keepdim=True)
+                nxt = sorted_i.gather(-1, torch.multinomial(sorted_p, 1))
+            else:
+                nxt = torch.multinomial(probs, 1)
+
+        tid = nxt.item()
+        if tid in eos:
+            break
+        out.append(tid)
+        logits, cache = _MODEL(nxt, cache=cache)
+
+    answer = _TOKENIZER.decode(out, skip_special_tokens=True)
+    print("\n用户：%s\n助手：%s\n" % (question, answer))
+    return answer
+
+
 if __name__ == "__main__":
     with torch.device("meta"):
         model = Qwen3ForCausalLM(Qwen3Config())
     print(model)
     print("参数量：", sum(p.numel() for p in model.parameters()))
+
+    generate("用三句话解释什么是 Transformer。", max_new_tokens=128, greedy=True)
