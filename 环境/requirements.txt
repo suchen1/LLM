@@ -1,4 +1,4 @@
-# nlpbase 环境 · 顶层依赖
+﻿# nlpbase 环境 · 顶层依赖
 # torch / torchvision 由 setup.ps1 单独安装（要按 GPU 架构和驱动版本选 CUDA 版本），不要写进这里
 # 精确复现请用同目录下的 requirements-lock.txt（140 个包全量锁定）
 #
@@ -24,6 +24,9 @@ tensorboard==2.19.0
 tqdm==4.70.1
 protobuf==5.29.6
 pillow==12.3.0
+
+# ---- chat template 必需（transformers 只把它列为可选依赖，不装会 ImportError）----
+jinja2==3.1.6
 
 # ---- Notebook：SFT微调/ 下的 .ipynb 要用，别漏 ----
 ipykernel==7.3.0

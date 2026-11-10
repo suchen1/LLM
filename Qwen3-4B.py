@@ -1,4 +1,5 @@
 import os
+from sre_parse import Tokenizer
 os.system('cls' if os.name == 'nt' else 'clear')
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 import torch
@@ -14,6 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 from transformers import AutoTokenizer,AutoModelForCausalLM, PreTrainedTokenizer
 from typing import List
 from rich import print
+
 
 @dataclass
 class Qwen3Config:
@@ -247,26 +249,20 @@ _TOKENIZER = None
 
 
 def _load_model(path=_MODEL_DIR, device="cuda"):
-    """在 device 上直接建模型并灌权重，不经过 CPU（省 8 GB 内存）。"""
     with open(os.path.join(path, "model.safetensors.index.json"), encoding="utf-8") as f:
         weight_map = _json.load(f)["weight_map"]
-
     with torch.device(device):
         model = Qwen3ForCausalLM(Qwen3Config())
-
     state = dict(model.state_dict())
     n = 0
     for shard in sorted(set(weight_map.values())):
         with _safe_open(os.path.join(path, shard), framework="pt", device=device) as f:
             for key in f.keys():
-                # lm_head 和 embed_tokens 共享权重，官方 checkpoint 里没有这个键，
-                # 所以“找不到”是正常的，不是加载失败。
                 if key in state:
                     with torch.no_grad():
                         state[key].copy_(f.get_tensor(key))
                     n += 1
     model.eval()
-    print("[加载] %d 个张量 -> %s" % (n, device))
     return model
 
 
@@ -283,13 +279,20 @@ def generate(question, max_new_tokens=256, temperature=0.7, top_p=0.8,
         _TOKENIZER = _AutoTokenizer.from_pretrained(_MODEL_DIR)
 
     messages = [{"role": "user", "content": question}]
+    # apply_chat_template 依赖 jinja2，而 transformers 只把 jinja2 列为【可选】依赖，
+    # pip install transformers 不会带它；缺了这里会直接 ImportError。
+    #
+    # enable_thinking=False 不是"关掉模板"，而是让模板注入一个【空】思考块
+    # （<think>\n\n</think>\n\n），等于告诉模型"跳过思考，直接回答"。
+    # 不传这个参数，模型会先输出一大段推理过程。
     try:
-        # Qwen3 默认先吐  thinking 思考块，演示时关掉更直观
         text = _TOKENIZER.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True, enable_thinking=False)
-    except TypeError:
-        text = _TOKENIZER.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True)
+    except Exception as e:
+        print("[警告] apply_chat_template 不可用（%s: %s），改用手动拼接" % (type(e).__name__, e))
+        print("        修复方式： pip install jinja2")
+        text = ("<|im_start|>user\n%s<|im_end|>\n"
+                "<|im_start|>assistant\n<think>\n\n</think>\n\n" % question)
 
     ids = _TOKENIZER(text, return_tensors="pt").input_ids.to(device)
 
