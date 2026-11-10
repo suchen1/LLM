@@ -2,6 +2,7 @@ import os
 from sre_parse import Tokenizer
 os.system('cls' if os.name == 'nt' else 'clear')
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+from sympy import true
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -279,21 +280,8 @@ def generate(question, max_new_tokens=256, temperature=0.7, top_p=0.8,
         _TOKENIZER = _AutoTokenizer.from_pretrained(_MODEL_DIR)
 
     messages = [{"role": "user", "content": question}]
-    # apply_chat_template 依赖 jinja2，而 transformers 只把 jinja2 列为【可选】依赖，
-    # pip install transformers 不会带它；缺了这里会直接 ImportError。
-    #
-    # enable_thinking=False 不是"关掉模板"，而是让模板注入一个【空】思考块
-    # （<think>\n\n</think>\n\n），等于告诉模型"跳过思考，直接回答"。
-    # 不传这个参数，模型会先输出一大段推理过程。
-    try:
-        text = _TOKENIZER.apply_chat_template(
+    text = _TOKENIZER.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True, enable_thinking=False)
-    except Exception as e:
-        print("[警告] apply_chat_template 不可用（%s: %s），改用手动拼接" % (type(e).__name__, e))
-        print("        修复方式： pip install jinja2")
-        text = ("<|im_start|>user\n%s<|im_end|>\n"
-                "<|im_start|>assistant\n<think>\n\n</think>\n\n" % question)
-
     ids = _TOKENIZER(text, return_tensors="pt").input_ids.to(device)
 
     # current_pos 是模型里的手动状态，不重置的话 RoPE 会接着上次的位置算
@@ -349,9 +337,9 @@ def generate(question, max_new_tokens=256, temperature=0.7, top_p=0.8,
 
 
 if __name__ == "__main__":
-    with torch.device("meta"):
-        model = Qwen3ForCausalLM(Qwen3Config())
-    print(model)
-    print("参数量：", sum(p.numel() for p in model.parameters()))
+    # with torch.device("meta"):
+    #     model = Qwen3ForCausalLM(Qwen3Config())
+    # print(model)
+    # print("参数量：", sum(p.numel() for p in model.parameters()))
 
     generate("用三句话解释什么是 Transformer。", max_new_tokens=128, greedy=True)
